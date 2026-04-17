@@ -53,8 +53,8 @@ pub fn run() {
             if let Err(e) = platform::window::apply_noactivate(handle) {
                 error!(error = %e, "failed to apply WS_EX_NOACTIVATE");
             }
-            if let Err(e) = platform::hotkeys::register_toggle_shortcut(handle) {
-                error!(error = %e, "failed to register global shortcut");
+            if let Err(e) = platform::hotkeys::register_all(handle) {
+                error!(error = %e, "failed to register global shortcuts");
             }
             if let Err(e) = platform::tray::install(app) {
                 error!(error = %e, "failed to install system tray");

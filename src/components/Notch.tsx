@@ -5,6 +5,8 @@ import {
   listPending,
   listSessions,
   onBusMessage,
+  onShortcutAction,
+  postDecision,
   resizeNotch,
   type PendingEvent,
   type Session,
@@ -54,6 +56,9 @@ export function Notch() {
   );
   const [, setTick] = useState(0);
   const collapseTimer = useRef<number | null>(null);
+  // Kept in sync with `pendings` so the shortcut handler — which is
+  // registered once on mount — always sees the latest top-of-queue.
+  const pendingsRef = useRef<Map<string, PendingEvent>>(new Map());
 
   // When a prompt shows up the notch forces-expands so the user sees it.
   // Hover still works; user-initiated collapse is vetoed while anything is
@@ -66,6 +71,7 @@ export function Notch() {
       ),
     [pendings],
   );
+  pendingsRef.current = pendings;
   const hasPending = pendingList.length > 0;
   const effectiveExpanded = hasPending || isExpanded;
 
@@ -133,6 +139,31 @@ export function Notch() {
   useEffect(() => {
     const id = window.setInterval(() => setTick((t) => t + 1), NOW_TICK_MS);
     return () => window.clearInterval(id);
+  }, []);
+
+  // Global-shortcut Allow/Deny → resolve the oldest pending in the queue.
+  // No-op if the queue is empty.
+  useEffect(() => {
+    let unlistenFn: UnlistenFn | null = null;
+    (async () => {
+      unlistenFn = await onShortcutAction((msg) => {
+        const sorted = Array.from(pendingsRef.current.values()).sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() -
+            new Date(b.created_at).getTime(),
+        );
+        const top = sorted[0];
+        if (!top) return;
+        const kind = msg.action === "allow_top_pending" ? "allow" : "deny";
+        postDecision(top.event_id, {
+          decision: kind,
+          reason: `Resolved via ${kind === "allow" ? "Ctrl+Alt+Shift+Y" : "Ctrl+Alt+Shift+N"}`,
+        }).catch((e) => console.error("shortcut decision failed", e));
+      });
+    })();
+    return () => {
+      unlistenFn?.();
+    };
   }, []);
 
   const clearCollapseTimer = useCallback(() => {

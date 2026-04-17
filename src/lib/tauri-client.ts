@@ -57,6 +57,11 @@ export type BusMessage =
   | { kind: "pending_resolved"; event_id: string; decision: Decision };
 
 export const BUS_EVENT = "beacon://bus";
+export const SHORTCUT_EVENT = "beacon://shortcut";
+
+export type ShortcutAction =
+  | { action: "allow_top_pending" }
+  | { action: "deny_top_pending" };
 
 export function listSessions(): Promise<Session[]> {
   return invoke("list_sessions");
@@ -94,4 +99,12 @@ export function onBusMessage(
   callback: (msg: BusMessage) => void,
 ): Promise<UnlistenFn> {
   return listen<BusMessage>(BUS_EVENT, (event) => callback(event.payload));
+}
+
+export function onShortcutAction(
+  callback: (msg: ShortcutAction) => void,
+): Promise<UnlistenFn> {
+  return listen<ShortcutAction>(SHORTCUT_EVENT, (event) =>
+    callback(event.payload),
+  );
 }
