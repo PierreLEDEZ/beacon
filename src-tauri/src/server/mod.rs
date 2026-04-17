@@ -7,6 +7,7 @@ use axum::http::{header, HeaderValue, Method};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
+use crate::decisions::PendingDecisions;
 use crate::events::EventBus;
 use crate::session::SessionManager;
 
@@ -20,9 +21,14 @@ pub const DEFAULT_PORT: u16 = 37421;
 pub async fn serve(
     sessions: SessionManager,
     events: EventBus,
+    pending: PendingDecisions,
     port: u16,
 ) -> Result<(), std::io::Error> {
-    let state = AppState { sessions, events };
+    let state = AppState {
+        sessions,
+        events,
+        pending,
+    };
     let app = routes::router(state).layer(cors_layer());
 
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();

@@ -7,10 +7,12 @@ use serde::{Deserialize, Serialize};
 use crate::server::dto::EventRequest;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum Status {
     Idle,
     Working,
+    /// Blocking PreToolUse event awaits the user's Allow/Deny.
+    WaitingApproval,
     Done,
     Error,
 }
@@ -95,6 +97,16 @@ impl SessionManager {
         sessions.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
         sessions
     }
+
+    /// Force a session's status; used when a blocking event lands
+    /// (WaitingApproval) or resolves (back to Working).
+    pub fn set_status(&self, claude_session_id: &str, status: Status) -> Option<Session> {
+        let mut map = self.inner.write().expect("session lock poisoned");
+        let s = map.get_mut(claude_session_id)?;
+        s.status = status;
+        s.last_activity = Utc::now();
+        Some(s.clone())
+    }
 }
 
 /// Map a Claude Code hook event name to the session status it implies.
@@ -102,7 +114,9 @@ impl SessionManager {
 fn status_from_event(event_type: &str) -> Option<Status> {
     match event_type {
         "SessionStart" => Some(Status::Idle),
-        "UserPromptSubmit" | "PreToolUse" | "PostToolUse" => Some(Status::Working),
+        // PreToolUse is blocking in Phase 2: it's set explicitly to
+        // WaitingApproval by the route handler, not here.
+        "UserPromptSubmit" | "PostToolUse" => Some(Status::Working),
         "Stop" | "SubagentStop" | "SessionEnd" => Some(Status::Done),
         _ => None,
     }

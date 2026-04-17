@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tokio::sync::broadcast;
 
+use crate::decisions::{Decision, PendingEvent};
 use crate::session::Session;
 
 #[derive(Debug, Clone, Serialize)]
@@ -8,6 +9,8 @@ use crate::session::Session;
 pub enum BusMessage {
     SessionUpdated { session: Session },
     SessionRemoved { claude_session_id: String },
+    PendingAwaiting { pending: PendingEvent },
+    PendingResolved { event_id: String, decision: Decision },
 }
 
 /// Small wrapper around a tokio broadcast channel so backend components stay

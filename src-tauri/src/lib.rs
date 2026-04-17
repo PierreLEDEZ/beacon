@@ -1,3 +1,4 @@
+mod decisions;
 mod events;
 pub mod install;
 mod logging;
@@ -8,6 +9,7 @@ mod session;
 use tauri::{command, AppHandle, Emitter, Manager, State};
 use tracing::{error, info, warn};
 
+use crate::decisions::{PendingDecisions, PendingEvent};
 use crate::events::EventBus;
 use crate::session::{Session, SessionManager};
 
@@ -21,6 +23,11 @@ async fn resize_notch(app: AppHandle, expanded: bool) -> Result<(), String> {
 #[command]
 fn list_sessions(sessions: State<'_, SessionManager>) -> Vec<Session> {
     sessions.list()
+}
+
+#[command]
+fn list_pending(pending: State<'_, PendingDecisions>) -> Vec<PendingEvent> {
+    pending.list()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -55,9 +62,11 @@ pub fn run() {
 
             let sessions = SessionManager::new();
             let events = EventBus::default();
+            let pending = PendingDecisions::new();
 
             app.manage(sessions.clone());
             app.manage(events.clone());
+            app.manage(pending.clone());
 
             let emit_handle = handle.clone();
             let mut rx = events.subscribe();
@@ -79,10 +88,15 @@ pub fn run() {
 
             let sessions_for_server = sessions.clone();
             let events_for_server = events.clone();
+            let pending_for_server = pending.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) =
-                    server::serve(sessions_for_server, events_for_server, server::DEFAULT_PORT)
-                        .await
+                if let Err(e) = server::serve(
+                    sessions_for_server,
+                    events_for_server,
+                    pending_for_server,
+                    server::DEFAULT_PORT,
+                )
+                .await
                 {
                     error!(error = %e, "http server exited with error");
                 }
@@ -90,7 +104,11 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![resize_notch, list_sessions])
+        .invoke_handler(tauri::generate_handler![
+            resize_notch,
+            list_sessions,
+            list_pending
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
