@@ -24,6 +24,7 @@ fn list_sessions(sessions: State<'_, SessionManager>) -> Vec<Session> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             let handle = app.handle();
 
@@ -32,6 +33,12 @@ pub fn run() {
             }
             if let Err(e) = platform::window::apply_noactivate(handle) {
                 eprintln!("[beacon] failed to apply WS_EX_NOACTIVATE: {e}");
+            }
+            if let Err(e) = platform::hotkeys::register_toggle_shortcut(handle) {
+                eprintln!("[beacon] failed to register global shortcut: {e}");
+            }
+            if let Err(e) = platform::tray::install(app) {
+                eprintln!("[beacon] failed to install system tray: {e}");
             }
 
             let sessions = SessionManager::new();
