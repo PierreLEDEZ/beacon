@@ -10,7 +10,20 @@ import {
   type Session,
 } from "../lib/tauri-client";
 import { PermissionPrompt } from "./PermissionPrompt";
+import { PlanReview } from "./PlanReview";
+import { QuestionPrompt } from "./QuestionPrompt";
 import { SessionCard } from "./SessionCard";
+
+function renderPrompt(pending: PendingEvent) {
+  switch (pending.tool_name) {
+    case "AskUserQuestion":
+      return <QuestionPrompt key={pending.event_id} pending={pending} />;
+    case "ExitPlanMode":
+      return <PlanReview key={pending.event_id} pending={pending} />;
+    default:
+      return <PermissionPrompt key={pending.event_id} pending={pending} />;
+  }
+}
 
 const COLLAPSE_DELAY_MS = 150;
 const NOW_TICK_MS = 5_000;
@@ -185,10 +198,7 @@ export function Notch() {
             </div>
             <div className="notch-expanded-body">
               {currentPending ? (
-                <PermissionPrompt
-                  key={currentPending.event_id}
-                  pending={currentPending}
-                />
+                renderPrompt(currentPending)
               ) : sessionList.length === 0 ? (
                 <div className="notch-empty">No active sessions yet.</div>
               ) : (
