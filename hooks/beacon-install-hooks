@@ -30,8 +30,10 @@ if [[ ! -f "$SETTINGS" ]]; then
   echo "{}" >"$SETTINGS"
 fi
 
-# Phase-1 hooks only. Phase-2 adds PreToolUse (blocking) + Notification.
-EVENTS=(SessionStart UserPromptSubmit PostToolUse Stop SessionEnd)
+# Phase-1 hooks (non-blocking) + Phase-2 PreToolUse (blocking).
+# Notification is still Phase-2 UI-side only; the hook event itself is
+# not installed here yet.
+EVENTS=(SessionStart UserPromptSubmit PreToolUse PostToolUse Stop SessionEnd)
 
 TMP=$(mktemp)
 for evt in "${EVENTS[@]}"; do
