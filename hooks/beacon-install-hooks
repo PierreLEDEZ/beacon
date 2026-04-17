@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# beacon-install-hooks — merge Beacon's Phase-1 hooks into ~/.claude/settings.json.
+#
+# Idempotent: safe to re-run. Existing matcher blocks that already point to
+# $HOOK_BIN are replaced (not duplicated); other hooks and every other
+# top-level key in settings.json are preserved.
+#
+# Env:
+#   HOOK_BIN           default $HOME/.local/bin/beacon-hook
+#   CLAUDE_SETTINGS    default $HOME/.claude/settings.json
+
+set -e
+
+HOOK_BIN="${HOOK_BIN:-$HOME/.local/bin/beacon-hook}"
+SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "error: jq is required. Install with: sudo apt install jq" >&2
+  exit 1
+fi
+
+if [[ ! -x "$HOOK_BIN" ]]; then
+  echo "error: $HOOK_BIN not found or not executable." >&2
+  echo "Run 'beacon.exe --install-hooks' from Windows first." >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$SETTINGS")"
+if [[ ! -f "$SETTINGS" ]]; then
+  echo "{}" >"$SETTINGS"
+fi
+
+# Phase-1 hooks only. Phase-2 adds PreToolUse (blocking) + Notification.
+EVENTS=(SessionStart UserPromptSubmit PostToolUse Stop SessionEnd)
+
+TMP=$(mktemp)
+for evt in "${EVENTS[@]}"; do
+  # For each event:
+  #  - Take existing matcher blocks
+  #  - Drop any whose command list already references our $bin (avoid dups)
+  #  - Append our new matcher block (no matcher = matches all tools/contexts)
+  jq --arg bin "$HOOK_BIN" --arg evt "$evt" '
+    .hooks = (.hooks // {}) |
+    .hooks[$evt] = (
+      ((.hooks[$evt] // [])
+        | map(select((.hooks // []) | map(.command // "") | index($bin) | not)))
+      + [{"hooks": [{"type": "command", "command": $bin}]}]
+    )
+  ' "$SETTINGS" >"$TMP"
+  mv "$TMP" "$SETTINGS"
+done
+
+echo "Installed Beacon hooks in $SETTINGS for events:"
+printf '  %s\n' "${EVENTS[@]}"
+echo
+echo "Existing keys (enabledPlugins, permissions, other hooks) preserved."

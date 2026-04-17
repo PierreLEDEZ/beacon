@@ -1,4 +1,5 @@
 mod events;
+pub mod install;
 mod platform;
 mod server;
 mod session;
