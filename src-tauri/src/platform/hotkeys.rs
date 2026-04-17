@@ -3,9 +3,12 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 use super::window::NOTCH_LABEL;
 
-/// Default global shortcut: Ctrl+Alt+Space.
+/// Default global shortcut: Ctrl+Alt+Shift+Space.
 pub fn default_shortcut() -> Shortcut {
-    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space)
+    Shortcut::new(
+        Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT),
+        Code::Space,
+    )
 }
 
 /// Register the default global shortcut. The handler toggles the notch

@@ -50,7 +50,7 @@ npm run tauri build   # release .msi in src-tauri/target/release/bundle/
 
 | Shortcut             | Action                   |
 | -------------------- | ------------------------ |
-| `Ctrl+Alt+Space`     | Show/hide the notch      |
+| `Ctrl+Alt+Shift+Space`     | Show/hide the notch      |
 | *(tray left-click)*  | Same — toggle visibility |
 
 ## Protocol (HTTP, `127.0.0.1:37421`)
@@ -89,14 +89,14 @@ Phase 2 will add `/wait/:id`, `/decision/:id`; Phase 3 will add `/jump/:id`, etc
   ```
   Re-run `claude`; you should see a `POST http://127.0.0.1:37421/event …` line per hook invocation. If `curl` fails, verify Beacon is running and try `curl http://127.0.0.1:37421/health` from WSL.
 - **Port 37421 already in use.** Beacon logs the bind failure but the UI still launches; nothing will flow from WSL. Identify the conflicting process with `Get-NetTCPConnection -LocalPort 37421` (PowerShell) and either free the port or relaunch Beacon. (Phase 3 will make the port configurable.)
-- **Notch doesn't appear.** Check `%APPDATA%\Beacon\logs\beacon.log` for `failed to position notch window` — usually a monitor-detection edge case. Hitting `Ctrl+Alt+Space` toggles visibility in case it's just hidden.
+- **Notch doesn't appear.** Check `%APPDATA%\Beacon\logs\beacon.log` for `failed to position notch window` — usually a monitor-detection edge case. Hitting `Ctrl+Alt+Shift+Space` toggles visibility in case it's just hidden.
 - **`--install-hooks` says "access denied" writing to WSL.** Make sure the distro is running (`wsl --list -v` → `Running`) and your user can write to `$HOME/.local/bin`.
 - **Settings file turned into a single line after install.** Normal: `jq` pretty-prints JSON; Claude Code accepts either shape.
 
 ## Phase 1 end-to-end checklist
 
 1. `npm run tauri build` produces an exe that launches to a 200×32 notch centered at the top of the screen.
-2. `Ctrl+Alt+Space` hides/shows it; tray menu (right-click) works; left-click the tray toggles.
+2. `Ctrl+Alt+Shift+Space` hides/shows it; tray menu (right-click) works; left-click the tray toggles.
 3. From WSL: `curl http://127.0.0.1:37421/health` → `{"status":"ok"}`.
 4. `beacon.exe --install-hooks` and then `~/.local/bin/beacon-install-hooks` in WSL → settings merged, existing keys intact.
 5. `claude` in a Zellij pane in Ghostty → session card appears with `ghostty · zellij · …`.
