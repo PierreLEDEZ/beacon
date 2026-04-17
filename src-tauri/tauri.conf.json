@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "beacon",
+  "productName": "Beacon",
   "version": "0.1.0",
   "identifier": "dev.beacon.app",
   "build": {
@@ -12,9 +12,24 @@
   "app": {
     "windows": [
       {
-        "title": "beacon",
-        "width": 800,
-        "height": 600
+        "label": "notch",
+        "title": "Beacon",
+        "width": 200,
+        "height": 32,
+        "x": 0,
+        "y": 0,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "skipTaskbar": true,
+        "focus": false,
+        "acceptFirstMouse": true,
+        "shadow": false,
+        "visible": false
       }
     ],
     "security": {
