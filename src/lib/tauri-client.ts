@@ -76,23 +76,18 @@ export function resizeNotch(expanded: boolean): Promise<void> {
 }
 
 /**
- * POST the user's Allow/Deny (or Answer) to the local Beacon server.
- * Uses fetch instead of invoke since the decision goes via HTTP — the
- * hook is waiting on /wait/:id, so the resolution must travel through
- * the same axum router.
+ * Resolve a pending prompt with the user's Allow/Deny/Answer.
+ *
+ * Uses Tauri IPC (invoke) to bypass CORS on the webview's origin. The
+ * backend fulfills the same one-shot channel the HTTP /decision/:id
+ * route would, so the hook's long-poll sees the decision regardless of
+ * which path resolved it.
  */
-export async function postDecision(
+export function postDecision(
   eventId: string,
   decision: Decision,
 ): Promise<void> {
-  const res = await fetch(`http://127.0.0.1:37421/decision/${eventId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(decision),
-  });
-  if (!res.ok && res.status !== 204) {
-    throw new Error(`decision POST failed: ${res.status} ${res.statusText}`);
-  }
+  return invoke("resolve_pending", { eventId, decision });
 }
 
 export function onBusMessage(

@@ -30,6 +30,28 @@ fn list_pending(pending: State<'_, PendingDecisions>) -> Vec<PendingEvent> {
     pending.list()
 }
 
+/// Frontend-driven path for resolving a pending prompt. Uses Tauri IPC
+/// rather than the HTTP route so the webview doesn't have to worry
+/// about CORS on its own origin. The HTTP /decision/:id route stays
+/// available for out-of-process callers (curl, tests, future clients).
+#[command]
+fn resolve_pending(
+    pending: State<'_, PendingDecisions>,
+    events: State<'_, EventBus>,
+    event_id: String,
+    decision: decisions::DecisionInput,
+) -> Result<(), String> {
+    let decision: decisions::Decision = decision.into();
+    if !pending.resolve(&event_id, decision.clone()) {
+        return Err(format!("unknown or already resolved: {event_id}"));
+    }
+    events.publish(events::BusMessage::PendingResolved {
+        event_id,
+        decision,
+    });
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Guard must outlive the runtime, so park it in the Tauri state.
@@ -107,7 +129,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             resize_notch,
             list_sessions,
-            list_pending
+            list_pending,
+            resolve_pending
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
