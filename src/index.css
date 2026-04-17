@@ -133,6 +133,11 @@ body,
   animation: pulse 1.4s ease-in-out infinite;
 }
 
+.status-dot.status-waiting_approval {
+  background: #a855f7;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
 .status-dot.status-done {
   background: #6b7280;
 }
@@ -190,4 +195,172 @@ body,
   font-size: 10.5px;
   opacity: 0.55;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---------- Permission prompt ---------- */
+
+.prompt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.prompt-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prompt-tool {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e5e7eb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.prompt-cwd {
+  font-size: 10.5px;
+  opacity: 0.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prompt-filepath {
+  font-size: 11px;
+  color: #c7d2fe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-description {
+  font-size: 11.5px;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+
+.diff-pair,
+.diff-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.diff-old,
+.diff-new,
+.bash-command,
+.tool-generic {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 6px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.diff-old {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+}
+
+.diff-new {
+  background: rgba(16, 185, 129, 0.12);
+  color: #86efac;
+}
+
+.bash-command {
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+}
+
+.tool-generic {
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+}
+
+.diff-more {
+  font-size: 10px;
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.prompt-reason {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #e5e7eb;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+.prompt-reason:focus {
+  border-color: rgba(168, 85, 247, 0.45);
+}
+
+.prompt-error {
+  font-size: 11px;
+  color: #fca5a5;
+}
+
+.prompt-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.prompt-actions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.prompt-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn-deny {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.btn-deny:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.22);
+}
+
+.btn-allow {
+  background: rgba(16, 185, 129, 0.18);
+  color: #86efac;
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.btn-allow:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.3);
 }
