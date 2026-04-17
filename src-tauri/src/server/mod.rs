@@ -27,7 +27,7 @@ pub async fn serve(
 
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();
     let listener = TcpListener::bind(addr).await?;
-    eprintln!("[beacon] http listening on http://{addr}");
+    tracing::info!(%addr, "http server listening");
     axum::serve(listener, app).await
 }
 
