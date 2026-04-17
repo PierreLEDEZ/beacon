@@ -48,22 +48,25 @@ npm run tauri build   # release .msi in src-tauri/target/release/bundle/
 
 ## Keyboard shortcuts
 
-| Shortcut             | Action                   |
-| -------------------- | ------------------------ |
-| `Ctrl+Alt+Shift+Space`     | Show/hide the notch      |
-| *(tray left-click)*  | Same — toggle visibility |
+| Shortcut                 | Action                                     |
+| ------------------------ | ------------------------------------------ |
+| `Ctrl+Alt+Shift+Space`   | Show/hide the notch                        |
+| `Ctrl+Alt+Shift+Y`       | Allow the oldest pending prompt            |
+| `Ctrl+Alt+Shift+N`       | Deny the oldest pending prompt             |
+| *(tray left-click)*      | Toggle visibility                          |
 
 ## Protocol (HTTP, `127.0.0.1:37421`)
 
-Phase 1 surface:
+| Method | Route                  | Purpose                                              |
+| ------ | ---------------------- | ---------------------------------------------------- |
+| GET    | `/health`              | Liveness ping (`{"status":"ok"}`)                    |
+| POST   | `/event`               | Accept a Claude Code hook event                      |
+| GET    | `/sessions`            | List active sessions                                 |
+| GET    | `/pending`             | List blocking prompts currently awaiting a decision  |
+| GET    | `/wait/:event_id`      | Long-poll by the hook; returns decision or timeout   |
+| POST   | `/decision/:event_id`  | Frontend resolves a prompt (allow / deny / answer)   |
 
-| Method | Route       | Purpose                               |
-| ------ | ----------- | ------------------------------------- |
-| GET    | `/health`   | Liveness ping (`{"status":"ok"}`)     |
-| POST   | `/event`    | Accept a Claude Code hook event       |
-| GET    | `/sessions` | List active sessions                  |
-
-Phase 2 will add `/wait/:id`, `/decision/:id`; Phase 3 will add `/jump/:id`, etc.
+Phase 3 will add `/jump/:id`, history endpoints, etc.
 
 ## Environment knobs
 
@@ -72,7 +75,8 @@ Phase 2 will add `/wait/:id`, `/decision/:id`; Phase 3 will add `/jump/:id`, etc
 | `BEACON_LOG`        | `info`                               | Rust backend (tracing filter) |
 | `BEACON_WSL_DISTRO` | `Ubuntu`                             | `--install-hooks`             |
 | `BEACON_URL`        | `http://127.0.0.1:37421`             | hook script                   |
-| `BEACON_TIMEOUT`    | `2`                                  | hook script (curl seconds)    |
+| `BEACON_TIMEOUT`    | `2`                                  | hook script (curl seconds, POST)|
+| `BEACON_WAIT_TIMEOUT`| `330`                               | hook script (long-poll seconds) |
 | `BEACON_HOOK_DEBUG` | unset                                | hook script                   |
 | `BEACON_HOOK_LOG`   | `$HOME/.cache/beacon/hook.log`       | hook script                   |
 
