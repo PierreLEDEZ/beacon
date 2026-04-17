@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# beacon-hook — generic Claude Code hook → Beacon HTTP bridge.
+#
+# Contract:
+#   stdin   JSON event from Claude Code (see docs.claude.com hook schema).
+#   stdout  nothing in Phase 1 (blocking decisions arrive in Phase 2).
+#   stderr  only with BEACON_HOOK_DEBUG=1; otherwise silent.
+#   exit    always 0, no matter what — this hook MUST NOT break Claude Code.
+#
+# Responsibilities:
+#   1. Parse the incoming hook JSON.
+#   2. Detect execution context (multiplexer + host terminal) from env.
+#   3. POST the enriched payload to http://127.0.0.1:37421/event.
+#
+# Tunables:
+#   BEACON_URL        default http://127.0.0.1:37421
+#   BEACON_TIMEOUT    default 2 (seconds, curl --max-time)
+#   BEACON_HOOK_DEBUG set to 1 to log to $BEACON_HOOK_LOG
+#   BEACON_HOOK_LOG   default $HOME/.cache/beacon/hook.log
+
+# Do NOT set -e: a single failed command must never abort and propagate
+# up to Claude Code. We rely on the trap below and explicit `|| true`.
+set +e
+trap 'exit 0' EXIT
+
+BEACON_URL="${BEACON_URL:-http://127.0.0.1:37421}"
+BEACON_TIMEOUT="${BEACON_TIMEOUT:-2}"
+BEACON_HOOK_LOG="${BEACON_HOOK_LOG:-$HOME/.cache/beacon/hook.log}"
+
+log() {
+  [[ -z "${BEACON_HOOK_DEBUG:-}" ]] && return 0
+  mkdir -p "$(dirname "$BEACON_HOOK_LOG")" 2>/dev/null || return 0
+  printf '[%s] %s\n' "$(date -Iseconds 2>/dev/null || date)" "$*" \
+    >>"$BEACON_HOOK_LOG" 2>/dev/null || true
+}
+
+# Escape a string for safe embedding inside a JSON string literal.
+json_str() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+INPUT=$(cat)
+if [[ -z "$INPUT" ]]; then
+  log "empty stdin"
+  exit 0
+fi
+
+# ---------- Parse Claude's hook payload -------------------------------------
+
+if command -v jq >/dev/null 2>&1; then
+  SESSION_ID=$(jq -r '.session_id // ""' <<<"$INPUT" 2>/dev/null)
+  CWD=$(jq -r '.cwd // ""' <<<"$INPUT" 2>/dev/null)
+  EVENT=$(jq -r '.hook_event_name // ""' <<<"$INPUT" 2>/dev/null)
+  TRANSCRIPT=$(jq -r '.transcript_path // ""' <<<"$INPUT" 2>/dev/null)
+  TOOL_NAME=$(jq -r '.tool_name // ""' <<<"$INPUT" 2>/dev/null)
+  TOOL_INPUT=$(jq -c '.tool_input // null' <<<"$INPUT" 2>/dev/null)
+else
+  # jq is missing: best-effort regex extraction for the string fields.
+  # We cannot reconstruct tool_input as JSON without a real parser, so we
+  # drop it — all other fields are still forwarded.
+  grab() {
+    grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" <<<"$INPUT" |
+      head -1 | sed 's/.*"\([^"]*\)"$/\1/'
+  }
+  SESSION_ID=$(grab session_id)
+  CWD=$(grab cwd)
+  EVENT=$(grab hook_event_name)
+  TRANSCRIPT=$(grab transcript_path)
+  TOOL_NAME=$(grab tool_name)
+  TOOL_INPUT="null"
+fi
+
+if [[ -z "$SESSION_ID" || -z "$EVENT" ]]; then
+  log "missing session_id or hook_event_name; skipping. input=$INPUT"
+  exit 0
+fi
+
+# ---------- Detect multiplexer ----------------------------------------------
+
+MUX_JSON="null"
+if [[ -n "${ZELLIJ:-}" ]]; then
+  MUX_JSON=$(printf '{"kind":"zellij","session":"%s","pane":"%s"}' \
+    "$(json_str "${ZELLIJ_SESSION_NAME:-}")" \
+    "$(json_str "${ZELLIJ_PANE_ID:-}")")
+elif [[ -n "${TMUX:-}" ]]; then
+  # tmux display-message reads from the current client; safe to call from
+  # a hook because Claude runs inside the same tmux client as the user.
+  TMUX_SESSION=$(tmux display-message -p '#S' 2>/dev/null)
+  TMUX_WINDOW=$(tmux display-message -p '#I' 2>/dev/null)
+  TMUX_PANE="${TMUX_PANE:-$(tmux display-message -p '#P' 2>/dev/null)}"
+  MUX_JSON=$(printf '{"kind":"tmux","session":"%s","tab":"%s","pane":"%s"}' \
+    "$(json_str "$TMUX_SESSION")" "$(json_str "$TMUX_WINDOW")" \
+    "$(json_str "$TMUX_PANE")")
+elif [[ -n "${STY:-}" ]]; then
+  MUX_JSON=$(printf '{"kind":"screen","session":"%s"}' "$(json_str "$STY")")
+fi
+
+# ---------- Detect host terminal --------------------------------------------
+
+HOST_KIND="unknown"
+MARKERS=()
+add_marker() {
+  MARKERS+=("\"$1\":\"$(json_str "$2")\"")
+}
+
+if [[ "${TERM_PROGRAM:-}" == "vscode" ]]; then
+  HOST_KIND="vscode-term"
+  add_marker TERM_PROGRAM "$TERM_PROGRAM"
+elif [[ -n "${GHOSTTY_RESOURCES_DIR:-}" || "${TERM:-}" == "xterm-ghostty" ]]; then
+  HOST_KIND="ghostty"
+  [[ -n "${GHOSTTY_RESOURCES_DIR:-}" ]] &&
+    add_marker GHOSTTY_RESOURCES_DIR "$GHOSTTY_RESOURCES_DIR"
+  [[ -n "${TERM:-}" ]] && add_marker TERM "$TERM"
+elif [[ -n "${WEZTERM_EXECUTABLE:-}" ]]; then
+  HOST_KIND="wezterm"
+  add_marker WEZTERM_EXECUTABLE "$WEZTERM_EXECUTABLE"
+elif [[ -n "${WT_SESSION:-}" ]]; then
+  HOST_KIND="windows-terminal"
+  add_marker WT_SESSION "$WT_SESSION"
+fi
+
+if [[ ${#MARKERS[@]} -eq 0 ]]; then
+  MARKERS_JSON="{}"
+else
+  MARKERS_JSON="{$(
+    IFS=,
+    echo "${MARKERS[*]}"
+  )}"
+fi
+
+# ---------- Build and POST payload ------------------------------------------
+
+if [[ -n "$TOOL_NAME" ]]; then
+  TOOL_NAME_JSON="\"$(json_str "$TOOL_NAME")\""
+else
+  TOOL_NAME_JSON="null"
+fi
+
+PAYLOAD=$(
+  cat <<EOF
+{
+  "event_type": "$(json_str "$EVENT")",
+  "claude": {
+    "session_id": "$(json_str "$SESSION_ID")",
+    "cwd": "$(json_str "$CWD")",
+    "transcript_path": "$(json_str "$TRANSCRIPT")",
+    "tool_name": $TOOL_NAME_JSON,
+    "tool_input": $TOOL_INPUT
+  },
+  "execution_context": {
+    "multiplexer": $MUX_JSON,
+    "host_terminal": {
+      "kind": "$HOST_KIND",
+      "markers": $MARKERS_JSON
+    }
+  }
+}
+EOF
+)
+
+log "POST $BEACON_URL/event event=$EVENT session=$SESSION_ID host=$HOST_KIND"
+
+curl --max-time "$BEACON_TIMEOUT" -s -X POST \
+  -H 'Content-Type: application/json' \
+  --data-binary "$PAYLOAD" \
+  "$BEACON_URL/event" >/dev/null 2>&1
+
+exit 0
