@@ -6,6 +6,7 @@ mod logging;
 mod platform;
 mod server;
 mod session;
+mod settings;
 
 use tauri::{command, AppHandle, Emitter, Manager, State};
 use tracing::{error, info, warn};
@@ -13,6 +14,7 @@ use tracing::{error, info, warn};
 use crate::decisions::{PendingDecisions, PendingEvent};
 use crate::events::EventBus;
 use crate::session::{Session, SessionManager};
+use crate::settings::{Settings, SettingsStore};
 
 pub const BUS_EVENT: &str = "beacon://bus";
 
@@ -34,12 +36,26 @@ fn list_pending(pending: State<'_, PendingDecisions>) -> Vec<PendingEvent> {
 #[command]
 fn jump_session(
     sessions: State<'_, SessionManager>,
+    settings: State<'_, SettingsStore>,
     claude_session_id: String,
 ) -> Result<jump::JumpReport, String> {
     let session = sessions
         .get(&claude_session_id)
         .ok_or_else(|| format!("unknown session: {claude_session_id}"))?;
-    Ok(jump::jump_to_session(&session))
+    Ok(jump::jump_to_session(&session, &settings.get()))
+}
+
+#[command]
+fn get_settings(store: State<'_, SettingsStore>) -> Settings {
+    store.get()
+}
+
+#[command]
+fn update_settings(
+    store: State<'_, SettingsStore>,
+    settings: Settings,
+) -> Result<Settings, String> {
+    store.update(settings)
 }
 
 /// Frontend-driven path for resolving a pending prompt. Uses Tauri IPC
@@ -98,10 +114,12 @@ pub fn run() {
             let sessions = SessionManager::new();
             let events = EventBus::default();
             let pending = PendingDecisions::new();
+            let settings_store = SettingsStore::load_or_default();
 
             app.manage(sessions.clone());
             app.manage(events.clone());
             app.manage(pending.clone());
+            app.manage(settings_store.clone());
 
             let emit_handle = handle.clone();
             let mut rx = events.subscribe();
@@ -124,12 +142,15 @@ pub fn run() {
             let sessions_for_server = sessions.clone();
             let events_for_server = events.clone();
             let pending_for_server = pending.clone();
+            let port = settings_store.get().port;
+            let timeout_secs = settings_store.get().decision_timeout_secs;
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = server::serve(
                     sessions_for_server,
                     events_for_server,
                     pending_for_server,
-                    server::DEFAULT_PORT,
+                    port,
+                    timeout_secs,
                 )
                 .await
                 {
@@ -144,7 +165,9 @@ pub fn run() {
             list_sessions,
             list_pending,
             resolve_pending,
-            jump_session
+            jump_session,
+            get_settings,
+            update_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

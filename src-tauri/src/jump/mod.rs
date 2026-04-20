@@ -13,10 +13,9 @@ use std::process::Command;
 
 use crate::platform::hwnd::focus_hwnd;
 use crate::session::{MultiplexerLocation, Session};
+use crate::settings::Settings;
 
-const DEFAULT_DISTRO: &str = "Ubuntu";
-
-pub fn jump_to_session(session: &Session) -> JumpReport {
+pub fn jump_to_session(session: &Session, settings: &Settings) -> JumpReport {
     let mut report = JumpReport::default();
 
     // Step 1: HWND focus.
@@ -33,7 +32,7 @@ pub fn jump_to_session(session: &Session) -> JumpReport {
 
     // Step 2: multiplexer pane focus (best-effort, only if we have mux info).
     if let Some(mux) = session.multiplexer.as_ref() {
-        match jump_multiplexer(mux) {
+        match jump_multiplexer(mux, &settings.wsl_distro) {
             Ok(true) => report.focused_pane = true,
             Ok(false) => {} // unsupported multiplexer, silent
             Err(e) => {
@@ -48,8 +47,7 @@ pub fn jump_to_session(session: &Session) -> JumpReport {
 /// Returns Ok(true) if we issued a focus-pane command, Ok(false) if the
 /// multiplexer kind isn't supported (silent skip), Err for an execution
 /// failure (wsl.exe launched but failed to complete).
-fn jump_multiplexer(mux: &MultiplexerLocation) -> Result<bool, String> {
-    let distro = std::env::var("BEACON_WSL_DISTRO").unwrap_or_else(|_| DEFAULT_DISTRO.into());
+fn jump_multiplexer(mux: &MultiplexerLocation, distro: &str) -> Result<bool, String> {
     let cmd = match mux.kind.as_str() {
         "zellij" => {
             let session = mux.session.as_deref().unwrap_or("");

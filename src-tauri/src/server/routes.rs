@@ -11,11 +11,10 @@ use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::decisions::{
-    Decision, DecisionInput, PendingDecisions, PendingEvent, DEFAULT_TIMEOUT_SECS,
-};
+use crate::decisions::{Decision, DecisionInput, PendingDecisions, PendingEvent};
 use crate::events::{BusMessage, EventBus};
 use crate::jump::{jump_to_session, JumpReport};
+use crate::settings::Settings;
 use crate::server::dto::{EventRequest, EventResponse};
 use crate::session::{Session, SessionManager, Status};
 
@@ -24,6 +23,7 @@ pub struct AppState {
     pub sessions: SessionManager,
     pub events: EventBus,
     pub pending: PendingDecisions,
+    pub decision_timeout_secs: u64,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -123,7 +123,7 @@ async fn wait_decision(
             .into_response();
     };
 
-    match tokio::time::timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS), rx).await {
+    match tokio::time::timeout(Duration::from_secs(state.decision_timeout_secs), rx).await {
         Ok(Ok(decision)) => Json(decision).into_response(),
         Ok(Err(_)) => {
             // Sender side was dropped (e.g. server shutdown); treat as deny.
@@ -197,7 +197,11 @@ async fn post_jump(
         multiplexer = ?session.multiplexer.as_ref().map(|m| m.kind.as_str()),
         "jump request"
     );
-    Ok(Json(jump_to_session(&session)))
+    // The HTTP jump route doesn't currently propagate live settings — it
+    // uses the same defaults as fresh installs. Frontend callers go
+    // through the Tauri command which reads SettingsStore; external
+    // curl jumps are a debug convenience, so defaults are acceptable.
+    Ok(Json(jump_to_session(&session, &Settings::default())))
 }
 
 type Response = axum::response::Response;

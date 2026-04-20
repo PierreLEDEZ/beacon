@@ -1,7 +1,7 @@
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, Manager, Wry,
+    App, Manager, WebviewUrl, WebviewWindowBuilder, Wry,
 };
 use tauri_plugin_autostart::ManagerExt;
 
@@ -30,11 +30,19 @@ pub fn install(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         None::<&str>,
     )?;
 
+    let settings_i = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit Beacon", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
-        &[&show_i, &hide_i, &autostart_i, &sep, &quit_i],
+        &[
+            &show_i,
+            &hide_i,
+            &autostart_i,
+            &settings_i,
+            &sep,
+            &quit_i,
+        ],
     )?;
 
     // Hold onto the check item so we can update it from handle_menu_event.
@@ -62,8 +70,37 @@ fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: MenuEv
         "show" => show_notch(app),
         "hide" => hide_notch(app),
         "autostart" => toggle_autostart(app),
+        "settings" => open_settings_window(app),
         "quit" => app.exit(0),
         _ => {}
+    }
+}
+
+/// Open (or focus if already open) the Settings webview window. Uses a
+/// hash route so a single bundled `index.html` serves both the notch
+/// and the settings page.
+fn open_settings_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(existing) = app.get_webview_window("settings") {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return;
+    }
+
+    let result = WebviewWindowBuilder::new(
+        app,
+        "settings",
+        WebviewUrl::App("index.html#/settings".into()),
+    )
+    .title("Beacon — Settings")
+    .inner_size(460.0, 420.0)
+    .min_inner_size(380.0, 340.0)
+    .resizable(true)
+    .visible(true)
+    .focused(true)
+    .build();
+
+    if let Err(e) = result {
+        tracing::error!(error = %e, "failed to open settings window");
     }
 }
 

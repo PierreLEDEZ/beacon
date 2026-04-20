@@ -13,9 +13,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
-/// Default timeout before an unanswered prompt auto-denies.
-pub const DEFAULT_TIMEOUT_SECS: u64 = 300;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DecisionKind {

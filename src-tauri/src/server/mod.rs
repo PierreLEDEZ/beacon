@@ -23,11 +23,13 @@ pub async fn serve(
     events: EventBus,
     pending: PendingDecisions,
     port: u16,
+    decision_timeout_secs: u64,
 ) -> Result<(), std::io::Error> {
     let state = AppState {
         sessions,
         events,
         pending,
+        decision_timeout_secs,
     };
     let app = routes::router(state).layer(cors_layer());
 

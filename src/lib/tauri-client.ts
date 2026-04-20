@@ -86,6 +86,23 @@ export function jumpToSession(
   return invoke("jump_session", { claudeSessionId });
 }
 
+export type NotchMonitor = "cursor" | "primary";
+
+export interface Settings {
+  port: number;
+  wsl_distro: string;
+  decision_timeout_secs: number;
+  notch_monitor: NotchMonitor;
+}
+
+export function getSettings(): Promise<Settings> {
+  return invoke("get_settings");
+}
+
+export function updateSettings(settings: Settings): Promise<Settings> {
+  return invoke("update_settings", { settings });
+}
+
 export function resizeNotch(expanded: boolean): Promise<void> {
   return invoke("resize_notch", { expanded });
 }
