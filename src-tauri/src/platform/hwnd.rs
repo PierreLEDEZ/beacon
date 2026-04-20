@@ -12,9 +12,14 @@
 //!   call.
 
 #[cfg(windows)]
-use windows::Win32::Foundation::HWND;
+use windows::core::PWSTR;
 #[cfg(windows)]
-use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+use windows::Win32::Foundation::{CloseHandle, HWND};
+#[cfg(windows)]
+use windows::Win32::System::Threading::{
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
+    PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 #[cfg(windows)]
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 #[cfg(windows)]
@@ -39,6 +44,55 @@ pub fn capture_foreground_hwnd() -> Option<i64> {
 
 #[cfg(not(windows))]
 pub fn capture_foreground_hwnd() -> Option<i64> {
+    None
+}
+
+/// Resolve the base name (without `.exe`) of the process that owns
+/// `raw_hwnd`. Used when the hook's `$TERM_PROGRAM` / `$WT_SESSION` /
+/// etc. detection returned "unknown" — at least we can surface
+/// "WindowsTerminal", "powershell", "Code", … in the session card.
+#[cfg(windows)]
+pub fn process_name_of_hwnd(raw_hwnd: i64) -> Option<String> {
+    unsafe {
+        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return None;
+        }
+
+        let handle =
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+
+        let mut buf = [0u16; 512];
+        let mut len = buf.len() as u32;
+        let res = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        );
+        let _ = CloseHandle(handle);
+
+        if res.is_err() {
+            return None;
+        }
+
+        let path = String::from_utf16_lossy(&buf[..len as usize]);
+        let file = path
+            .rsplit(|c| c == '\\' || c == '/')
+            .next()
+            .filter(|s| !s.is_empty())?;
+        let stripped = file
+            .strip_suffix(".exe")
+            .or_else(|| file.strip_suffix(".EXE"))
+            .unwrap_or(file);
+        Some(stripped.to_string())
+    }
+}
+
+#[cfg(not(windows))]
+pub fn process_name_of_hwnd(_raw_hwnd: i64) -> Option<String> {
     None
 }
 

@@ -6,6 +6,19 @@ interface Props {
   session: Session;
 }
 
+/**
+ * Prefer the hook-detected terminal kind (ghostty, vscode-term, etc.)
+ * when it's something specific. When the hook couldn't pin it down
+ * ("unknown"), fall back to the exe name we resolved from the HWND
+ * (WindowsTerminal, powershell, wsl, Code, …). Last resort: "unknown".
+ */
+function displayTerminal(session: Session): string {
+  const kind = session.host_terminal.kind;
+  if (kind && kind !== "unknown") return kind;
+  if (session.terminal_exe) return session.terminal_exe;
+  return kind || "unknown";
+}
+
 export function SessionCard({ session }: Props) {
   const multiplexer = session.multiplexer?.kind ?? null;
 
@@ -36,7 +49,7 @@ export function SessionCard({ session }: Props) {
           {shortenCwd(session.cwd)}
         </div>
         <div className="session-meta">
-          <span>{session.host_terminal.kind}</span>
+          <span>{displayTerminal(session)}</span>
           {multiplexer && <span> · {multiplexer}</span>}
           {session.last_tool_name && (
             <span className="session-tool">

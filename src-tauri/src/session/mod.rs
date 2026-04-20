@@ -32,6 +32,10 @@ pub struct Session {
     /// captured on the first event. `None` on non-Windows or if the OS
     /// returned no foreground window at the capture moment.
     pub current_hwnd: Option<i64>,
+    /// Basename (no `.exe`) of the host process owning `current_hwnd`.
+    /// Fallback surface when the hook reports `host_terminal.kind ==
+    /// "unknown"` (e.g. raw `wsl.exe` inside cmd/pwsh without WT_SESSION).
+    pub terminal_exe: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +73,7 @@ impl SessionManager {
         // Capture BEFORE taking the write lock — GetForegroundWindow
         // should not depend on our own lock state.
         let captured_hwnd = crate::platform::hwnd::capture_foreground_hwnd();
+        let captured_exe = captured_hwnd.and_then(crate::platform::hwnd::process_name_of_hwnd);
         let mut map = self.inner.write().expect("session lock poisoned");
 
         let entry = map
@@ -89,6 +94,7 @@ impl SessionManager {
                 // switched to another window.
                 if s.current_hwnd.is_none() {
                     s.current_hwnd = captured_hwnd;
+                    s.terminal_exe = captured_exe.clone();
                 }
             })
             .or_insert_with(|| Session {
@@ -102,6 +108,7 @@ impl SessionManager {
                 last_event_type: Some(req.event_type.clone()),
                 last_tool_name: req.claude.tool_name.clone(),
                 current_hwnd: captured_hwnd,
+                terminal_exe: captured_exe,
             });
         entry.clone()
     }

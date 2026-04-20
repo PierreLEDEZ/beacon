@@ -30,6 +30,8 @@ export interface Session {
   host_terminal: HostTerminal;
   last_event_type?: string;
   last_tool_name?: string;
+  current_hwnd?: number | null;
+  terminal_exe?: string | null;
 }
 
 export interface PendingEvent {
