@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { postDecision, type PendingEvent } from "../lib/tauri-client";
 import { shortenCwd } from "../lib/time";
+import { ToolIcon } from "./ToolIcon";
 
 interface Props {
   pending: PendingEvent;
@@ -40,6 +41,7 @@ export function PermissionPrompt({ pending }: Props) {
     <div className="prompt">
       <div className="prompt-header">
         <span className="prompt-tool">
+          <ToolIcon tool={pending.tool_name} size={14} />
           {pending.tool_name ?? pending.event_type}
         </span>
         <span className="prompt-cwd" title={pending.cwd}>

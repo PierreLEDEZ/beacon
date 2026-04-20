@@ -1,5 +1,6 @@
 import { jumpToSession, type Session } from "../lib/tauri-client";
 import { relTime, shortenCwd } from "../lib/time";
+import { ToolIcon } from "./ToolIcon";
 
 interface Props {
   session: Session;
@@ -38,7 +39,11 @@ export function SessionCard({ session }: Props) {
           <span>{session.host_terminal.kind}</span>
           {multiplexer && <span> · {multiplexer}</span>}
           {session.last_tool_name && (
-            <span> · {session.last_tool_name}</span>
+            <span className="session-tool">
+              {" · "}
+              <ToolIcon tool={session.last_tool_name} size={11} />
+              {session.last_tool_name}
+            </span>
           )}
           <span> · {relTime(session.last_activity)}</span>
         </div>

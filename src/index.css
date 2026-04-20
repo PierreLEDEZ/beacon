@@ -231,10 +231,27 @@ body,
 }
 
 .prompt-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   color: #e5e7eb;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.prompt-tool svg {
+  opacity: 0.85;
+}
+
+.session-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.session-tool svg {
+  opacity: 0.75;
 }
 
 .prompt-cwd {
