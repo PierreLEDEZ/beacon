@@ -1,6 +1,7 @@
 mod decisions;
 mod events;
 pub mod install;
+mod jump;
 mod logging;
 mod platform;
 mod server;
@@ -28,6 +29,17 @@ fn list_sessions(sessions: State<'_, SessionManager>) -> Vec<Session> {
 #[command]
 fn list_pending(pending: State<'_, PendingDecisions>) -> Vec<PendingEvent> {
     pending.list()
+}
+
+#[command]
+fn jump_session(
+    sessions: State<'_, SessionManager>,
+    claude_session_id: String,
+) -> Result<jump::JumpReport, String> {
+    let session = sessions
+        .get(&claude_session_id)
+        .ok_or_else(|| format!("unknown session: {claude_session_id}"))?;
+    Ok(jump::jump_to_session(&session))
 }
 
 /// Frontend-driven path for resolving a pending prompt. Uses Tauri IPC
@@ -130,7 +142,8 @@ pub fn run() {
             resize_notch,
             list_sessions,
             list_pending,
-            resolve_pending
+            resolve_pending,
+            jump_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

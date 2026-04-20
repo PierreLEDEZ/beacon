@@ -28,6 +28,10 @@ pub struct Session {
     pub host_terminal: HostTerminal,
     pub last_event_type: Option<String>,
     pub last_tool_name: Option<String>,
+    /// Raw HWND of the terminal window hosting this Claude session,
+    /// captured on the first event. `None` on non-Windows or if the OS
+    /// returned no foreground window at the capture moment.
+    pub current_hwnd: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +66,9 @@ impl SessionManager {
     pub fn upsert_from_event(&self, req: &EventRequest) -> Session {
         let now = Utc::now();
         let next_status = status_from_event(&req.event_type);
+        // Capture BEFORE taking the write lock — GetForegroundWindow
+        // should not depend on our own lock state.
+        let captured_hwnd = crate::platform::hwnd::capture_foreground_hwnd();
         let mut map = self.inner.write().expect("session lock poisoned");
 
         let entry = map
@@ -76,6 +83,13 @@ impl SessionManager {
                 s.host_terminal = req.execution_context.host_terminal.clone();
                 s.last_event_type = Some(req.event_type.clone());
                 s.last_tool_name = req.claude.tool_name.clone();
+                // Don't overwrite a previously-captured HWND: the first
+                // event (SessionStart, usually) is the most reliable
+                // moment and later events could fire while the user has
+                // switched to another window.
+                if s.current_hwnd.is_none() {
+                    s.current_hwnd = captured_hwnd;
+                }
             })
             .or_insert_with(|| Session {
                 claude_session_id: req.claude.session_id.clone(),
@@ -87,6 +101,7 @@ impl SessionManager {
                 host_terminal: req.execution_context.host_terminal.clone(),
                 last_event_type: Some(req.event_type.clone()),
                 last_tool_name: req.claude.tool_name.clone(),
+                current_hwnd: captured_hwnd,
             });
         entry.clone()
     }
@@ -96,6 +111,14 @@ impl SessionManager {
         let mut sessions: Vec<Session> = map.values().cloned().collect();
         sessions.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
         sessions
+    }
+
+    pub fn get(&self, claude_session_id: &str) -> Option<Session> {
+        self.inner
+            .read()
+            .expect("session lock poisoned")
+            .get(claude_session_id)
+            .cloned()
     }
 
     /// Force a session's status; used when a blocking event lands

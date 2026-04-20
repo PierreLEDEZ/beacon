@@ -71,6 +71,19 @@ export function listPending(): Promise<PendingEvent[]> {
   return invoke("list_pending");
 }
 
+export interface JumpReport {
+  focused_window: boolean;
+  focused_pane: boolean;
+  window_error?: string;
+  multiplexer_error?: string;
+}
+
+export function jumpToSession(
+  claudeSessionId: string,
+): Promise<JumpReport> {
+  return invoke("jump_session", { claudeSessionId });
+}
+
 export function resizeNotch(expanded: boolean): Promise<void> {
   return invoke("resize_notch", { expanded });
 }

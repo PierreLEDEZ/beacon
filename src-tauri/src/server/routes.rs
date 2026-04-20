@@ -15,6 +15,7 @@ use crate::decisions::{
     Decision, DecisionInput, PendingDecisions, PendingEvent, DEFAULT_TIMEOUT_SECS,
 };
 use crate::events::{BusMessage, EventBus};
+use crate::jump::{jump_to_session, JumpReport};
 use crate::server::dto::{EventRequest, EventResponse};
 use crate::session::{Session, SessionManager, Status};
 
@@ -33,6 +34,7 @@ pub fn router(state: AppState) -> Router {
         .route("/pending", get(list_pending))
         .route("/wait/{event_id}", get(wait_decision))
         .route("/decision/{event_id}", post(post_decision))
+        .route("/jump/{claude_session_id}", post(post_jump))
         .with_state(state)
 }
 
@@ -176,6 +178,26 @@ async fn post_decision(
     // UI also clears it immediately via the bus message.
 
     StatusCode::NO_CONTENT.into_response()
+}
+
+/// Trigger the jump pipeline for a session (HWND focus + multiplexer
+/// pane). Always returns the JumpReport so the caller can see partial
+/// success: missing-HWND or unsupported-multiplexer aren't errors.
+async fn post_jump(
+    Path(claude_session_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<JumpReport>, (StatusCode, String)> {
+    let session = state.sessions.get(&claude_session_id).ok_or((
+        StatusCode::NOT_FOUND,
+        format!("unknown session: {claude_session_id}"),
+    ))?;
+    tracing::info!(
+        claude_session_id = %claude_session_id,
+        hwnd = ?session.current_hwnd,
+        multiplexer = ?session.multiplexer.as_ref().map(|m| m.kind.as_str()),
+        "jump request"
+    );
+    Ok(Json(jump_to_session(&session)))
 }
 
 type Response = axum::response::Response;

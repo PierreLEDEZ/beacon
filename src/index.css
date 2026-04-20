@@ -168,6 +168,22 @@ body,
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
+  /* Reset <button> defaults so cards keep looking like cards. */
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.session-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.session-card:active {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .session-card .status-dot {

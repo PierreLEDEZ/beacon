@@ -1,4 +1,4 @@
-import type { Session } from "../lib/tauri-client";
+import { jumpToSession, type Session } from "../lib/tauri-client";
 import { relTime, shortenCwd } from "../lib/time";
 
 interface Props {
@@ -7,8 +7,28 @@ interface Props {
 
 export function SessionCard({ session }: Props) {
   const multiplexer = session.multiplexer?.kind ?? null;
+
+  async function handleJump() {
+    try {
+      const report = await jumpToSession(session.claude_session_id);
+      if (!report.focused_window && report.window_error) {
+        console.warn("jump: window step failed", report.window_error);
+      }
+      if (report.multiplexer_error) {
+        console.warn("jump: multiplexer step failed", report.multiplexer_error);
+      }
+    } catch (e) {
+      console.error("jump failed", e);
+    }
+  }
+
   return (
-    <div className="session-card">
+    <button
+      type="button"
+      className="session-card"
+      onClick={handleJump}
+      title="Jump to this terminal"
+    >
       <div className={`status-dot status-${session.status}`} />
       <div className="session-body">
         <div className="session-cwd" title={session.cwd}>
@@ -23,6 +43,6 @@ export function SessionCard({ session }: Props) {
           <span> · {relTime(session.last_activity)}</span>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
