@@ -15,32 +15,59 @@ interface Props {
 }
 
 /**
- * Renders an AskUserQuestion tool call so the user sees the question
- * before approving. Clicking an option label is a shortcut that Allows
- * the tool call and records the chosen label in the reason field — the
- * actual answer will still flow through Claude's terminal-side UI once
- * the tool executes. Full answer-from-Beacon injection is Phase-4 work.
+ * Renders an AskUserQuestion tool call so the user answers directly
+ * from Beacon.
+ *
+ * Mechanism: Claude Code's PreToolUse hook cannot synthesize a tool
+ * result, but it can *block* a tool call with an arbitrary reason. When
+ * Claude sees "AskUserQuestion was blocked. Reason: <user's answer>",
+ * it reads the reason as the user's response and continues — same
+ * technique used by Vibe Island for its agent-agnostic "Zero Config
+ * hooks" support.
+ *
+ * Interactions:
+ *   • click an option button  → block with reason = the selected label
+ *   • "Free-text answer" expands an inline input for open answers
+ *   • Cancel                  → block with a "declined" reason
  */
 export function QuestionPrompt({ pending }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [freeTextFor, setFreeTextFor] = useState<number | null>(null);
+  const [freeText, setFreeText] = useState("");
 
   const input = (pending.tool_input ?? {}) as Record<string, unknown>;
   const questions: Question[] = Array.isArray(input.questions)
     ? (input.questions as Question[])
     : [];
 
-  async function submit(
-    kind: "allow" | "deny",
-    reason: string | undefined,
-  ) {
+  /**
+   * deny → hook writes {"decision":"block","reason":...} on stdout;
+   * Claude reads the reason as the user's answer.
+   */
+  async function answer(questionIndex: number, value: string) {
     if (submitting) return;
     setSubmitting(true);
     setError(null);
     try {
       await postDecision(pending.event_id, {
-        decision: kind,
-        reason: reason?.trim() || undefined,
+        decision: "deny",
+        reason: `User answered Q${questionIndex + 1} via Beacon: "${value}"`,
+      });
+    } catch (e) {
+      setError(String(e));
+      setSubmitting(false);
+    }
+  }
+
+  async function cancel() {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await postDecision(pending.event_id, {
+        decision: "deny",
+        reason: "User declined to answer via Beacon.",
       });
     } catch (e) {
       setError(String(e));
@@ -72,9 +99,7 @@ export function QuestionPrompt({ pending }: Props) {
                     key={oi}
                     className="question-option"
                     disabled={submitting}
-                    onClick={() =>
-                      submit("allow", `Q${qi + 1} → ${opt.label}`)
-                    }
+                    onClick={() => answer(qi, opt.label)}
                     title={opt.description ?? undefined}
                   >
                     <span className="question-option-label">{opt.label}</span>
@@ -87,6 +112,45 @@ export function QuestionPrompt({ pending }: Props) {
                 ))}
               </div>
             )}
+
+            {freeTextFor === qi ? (
+              <div className="question-freetext-row">
+                <input
+                  className="prompt-reason"
+                  placeholder="Type your answer…"
+                  value={freeText}
+                  onChange={(e) => setFreeText(e.target.value)}
+                  autoFocus
+                  disabled={submitting}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && freeText.trim()) {
+                      answer(qi, freeText.trim());
+                    } else if (e.key === "Escape") {
+                      setFreeTextFor(null);
+                      setFreeText("");
+                    }
+                  }}
+                />
+                <button
+                  className="btn-allow"
+                  disabled={!freeText.trim() || submitting}
+                  onClick={() => answer(qi, freeText.trim())}
+                >
+                  Send
+                </button>
+              </div>
+            ) : (
+              <button
+                className="question-freetext-toggle"
+                disabled={submitting}
+                onClick={() => {
+                  setFreeTextFor(qi);
+                  setFreeText("");
+                }}
+              >
+                Free-text answer…
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -94,19 +158,8 @@ export function QuestionPrompt({ pending }: Props) {
       {error && <div className="prompt-error">{error}</div>}
 
       <div className="prompt-actions">
-        <button
-          className="btn-deny"
-          onClick={() => submit("deny", "User declined to answer via Beacon")}
-          disabled={submitting}
-        >
-          Deny
-        </button>
-        <button
-          className="btn-allow"
-          onClick={() => submit("allow", undefined)}
-          disabled={submitting}
-        >
-          Allow (answer in terminal)
+        <button className="btn-deny" onClick={cancel} disabled={submitting}>
+          Cancel
         </button>
       </div>
     </div>
