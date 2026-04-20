@@ -57,11 +57,11 @@ fn jump_multiplexer(mux: &MultiplexerLocation) -> Result<bool, String> {
             if session.is_empty() || pane.is_empty() {
                 return Err("zellij mux location missing session/pane".into());
             }
-            // `focus-pane-with-id` is the stable Zellij v0.40+ syntax.
+            // `focus-pane-id` (no "with") is the Zellij action name.
             // `--session` targets the named session even when multiple
             // are running in the same WSL distro.
             format!(
-                "zellij --session {} action focus-pane-with-id {}",
+                "zellij --session {} action focus-pane-id {}",
                 shell_arg(session),
                 shell_arg(pane)
             )
