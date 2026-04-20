@@ -1,20 +1,44 @@
 use tauri::{
-    menu::{Menu, MenuEvent, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, Manager,
+    App, Manager, Wry,
 };
+use tauri_plugin_autostart::ManagerExt;
 
 use super::window::NOTCH_LABEL;
 
-/// Install the Beacon system-tray icon with a Show / Hide / Quit menu.
-/// Left-clicking the tray icon toggles the notch's visibility — the menu
-/// stays useful for users who prefer explicit actions (and works with
-/// keyboard-only navigation).
+/// Kept in Tauri-managed state so the menu event handler can tick /
+/// untick the checkbox when autostart toggles.
+struct AutostartMenuRef(CheckMenuItem<Wry>);
+
+/// Install the Beacon system-tray icon. Left-click toggles the notch,
+/// the menu gives Show / Hide / Start-with-Windows / Quit.
 pub fn install(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
     let hide_i = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
+
+    let autostart_checked = app
+        .autolaunch()
+        .is_enabled()
+        .unwrap_or(false);
+    let autostart_i = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "Start with Windows",
+        true,
+        autostart_checked,
+        None::<&str>,
+    )?;
+
+    let sep = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit Beacon", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show_i, &hide_i, &quit_i])?;
+    let menu = Menu::with_items(
+        app,
+        &[&show_i, &hide_i, &autostart_i, &sep, &quit_i],
+    )?;
+
+    // Hold onto the check item so we can update it from handle_menu_event.
+    app.manage(AutostartMenuRef(autostart_i.clone()));
 
     let icon = app
         .default_window_icon()
@@ -37,14 +61,13 @@ fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: MenuEv
     match event.id.as_ref() {
         "show" => show_notch(app),
         "hide" => hide_notch(app),
+        "autostart" => toggle_autostart(app),
         "quit" => app.exit(0),
         _ => {}
     }
 }
 
 fn handle_icon_event<R: tauri::Runtime>(tray: &tauri::tray::TrayIcon<R>, event: TrayIconEvent) {
-    // Only fire on the release half of a left click; ignore hovers/right
-    // clicks (right-click is the native menu shortcut on Windows).
     if let TrayIconEvent::Click {
         button: MouseButton::Left,
         button_state: MouseButtonState::Up,
@@ -77,6 +100,30 @@ fn toggle_notch<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         }
         Ok(false) | Err(_) => {
             let _ = window.show();
+        }
+    }
+}
+
+/// Switch the Windows login-launch registry entry on/off and keep the
+/// tray checkbox in sync.
+fn toggle_autostart<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let launcher = app.autolaunch();
+    let was_enabled = launcher.is_enabled().unwrap_or(false);
+    let result = if was_enabled {
+        launcher.disable()
+    } else {
+        launcher.enable()
+    };
+    match result {
+        Ok(()) => {
+            let now_enabled = !was_enabled;
+            if let Some(menu_ref) = app.try_state::<AutostartMenuRef>() {
+                let _ = menu_ref.0.set_checked(now_enabled);
+            }
+            tracing::info!(enabled = now_enabled, "autostart toggled");
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "autostart toggle failed");
         }
     }
 }
