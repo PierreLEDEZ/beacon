@@ -108,6 +108,24 @@ Phase 3 will add `/jump/:id`, history endpoints, etc.
 7. Typing a prompt flips the status dot to working (amber); `Stop` flips it to done (grey).
 8. Log file populated at `%APPDATA%\Beacon\logs\beacon.log`.
 
+## Releases
+
+Two GitHub Actions workflows ship with the repo:
+
+- **CI** (`.github/workflows/ci.yml`) — runs on every push/PR: `npm run build` (tsc + Vite) and `cargo check` + `cargo test` on `windows-latest`. Caches Rust deps via `Swatinem/rust-cache` so reruns are quick.
+- **Release** (`.github/workflows/release.yml`) — triggers when you push a `v*.*.*` tag (or via the Actions UI with a manual version). Uses `tauri-apps/tauri-action@v0` to bundle the Windows `.msi` and `.exe`, and creates a **draft** GitHub Release with the installers attached so you can review and publish by hand.
+
+To cut a release:
+
+```bash
+# Bump package.json + src-tauri/Cargo.toml + src-tauri/tauri.conf.json
+git commit -am "chore: v0.1.0"
+git tag v0.1.0
+git push && git push --tags
+```
+
+Code-signing + auto-updater wiring are intentionally skipped for now — they land in Phase 3 polish together with the `TAURI_SIGNING_PRIVATE_KEY` secret.
+
 ## License
 
 TBD.

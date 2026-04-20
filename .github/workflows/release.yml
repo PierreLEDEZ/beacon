@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to cut (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows bundle
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app + create draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Fall back to the pushed tag name when triggered by a tag;
+          # take the manual `version` input for workflow_dispatch runs.
+          tagName: ${{ inputs.version || github.ref_name }}
+          releaseName: "Beacon ${{ inputs.version || github.ref_name }}"
+          releaseBody: |
+            See [CHANGELOG](./CHANGELOG.md) or the commit log for details.
+
+            Download the `.msi` installer below. Run once to set up; then follow the
+            post-install instructions in the README to register the WSL hooks.
+          releaseDraft: true
+          prerelease: false
+          # Signing is not configured yet — the bundle is unsigned. Auto-
+          # updater wiring (which needs TAURI_SIGNING_PRIVATE_KEY) is
+          # deferred to Phase 3 polish.
