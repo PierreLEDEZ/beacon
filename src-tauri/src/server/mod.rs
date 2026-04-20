@@ -9,6 +9,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::decisions::PendingDecisions;
 use crate::events::EventBus;
+use crate::history::History;
 use crate::session::SessionManager;
 
 pub use routes::AppState;
@@ -22,6 +23,7 @@ pub async fn serve(
     sessions: SessionManager,
     events: EventBus,
     pending: PendingDecisions,
+    history: Option<History>,
     port: u16,
     decision_timeout_secs: u64,
 ) -> Result<(), std::io::Error> {
@@ -29,6 +31,7 @@ pub async fn serve(
         sessions,
         events,
         pending,
+        history,
         decision_timeout_secs,
     };
     let app = routes::router(state).layer(cors_layer());

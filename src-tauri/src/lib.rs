@@ -1,5 +1,6 @@
 mod decisions;
 mod events;
+mod history;
 pub mod install;
 mod jump;
 mod logging;
@@ -13,6 +14,7 @@ use tracing::{error, info, warn};
 
 use crate::decisions::{PendingDecisions, PendingEvent};
 use crate::events::EventBus;
+use crate::history::{EventRecord, History};
 use crate::session::{Session, SessionManager};
 use crate::settings::{Settings, SettingsStore};
 
@@ -56,6 +58,19 @@ fn update_settings(
     settings: Settings,
 ) -> Result<Settings, String> {
     store.update(settings)
+}
+
+#[command]
+fn list_session_history(
+    history: State<'_, Option<History>>,
+    claude_session_id: String,
+    limit: Option<i64>,
+) -> Result<Vec<EventRecord>, String> {
+    let Some(h) = history.as_ref() else {
+        return Ok(Vec::new());
+    };
+    h.list_for_session(&claude_session_id, limit.unwrap_or(200))
+        .map_err(|e| e.to_string())
 }
 
 /// Frontend-driven path for resolving a pending prompt. Uses Tauri IPC
@@ -115,11 +130,13 @@ pub fn run() {
             let events = EventBus::default();
             let pending = PendingDecisions::new();
             let settings_store = SettingsStore::load_or_default();
+            let history = History::try_open();
 
             app.manage(sessions.clone());
             app.manage(events.clone());
             app.manage(pending.clone());
             app.manage(settings_store.clone());
+            app.manage(history.clone());
 
             let emit_handle = handle.clone();
             let mut rx = events.subscribe();
@@ -142,6 +159,7 @@ pub fn run() {
             let sessions_for_server = sessions.clone();
             let events_for_server = events.clone();
             let pending_for_server = pending.clone();
+            let history_for_server = history.clone();
             let port = settings_store.get().port;
             let timeout_secs = settings_store.get().decision_timeout_secs;
             tauri::async_runtime::spawn(async move {
@@ -149,6 +167,7 @@ pub fn run() {
                     sessions_for_server,
                     events_for_server,
                     pending_for_server,
+                    history_for_server,
                     port,
                     timeout_secs,
                 )
@@ -167,7 +186,8 @@ pub fn run() {
             resolve_pending,
             jump_session,
             get_settings,
-            update_settings
+            update_settings,
+            list_session_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

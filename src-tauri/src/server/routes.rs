@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::decisions::{Decision, DecisionInput, PendingDecisions, PendingEvent};
 use crate::events::{BusMessage, EventBus};
+use crate::history::{EventRecord, History};
 use crate::jump::{jump_to_session, JumpReport};
 use crate::settings::Settings;
 use crate::server::dto::{EventRequest, EventResponse};
@@ -23,6 +24,7 @@ pub struct AppState {
     pub sessions: SessionManager,
     pub events: EventBus,
     pub pending: PendingDecisions,
+    pub history: Option<History>,
     pub decision_timeout_secs: u64,
 }
 
@@ -31,6 +33,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/event", post(ingest_event))
         .route("/sessions", get(list_sessions))
+        .route("/sessions/{claude_session_id}/history", get(list_session_history))
         .route("/pending", get(list_pending))
         .route("/wait/{event_id}", get(wait_decision))
         .route("/decision/{event_id}", post(post_decision))
@@ -76,6 +79,26 @@ async fn ingest_event(
     );
 
     let session = state.sessions.upsert_from_event(&req);
+
+    // Mirror the event into the history DB. Best-effort; a bad write
+    // logs at warn level but never disrupts the live flow.
+    if let Some(history) = state.history.as_ref() {
+        let record = EventRecord {
+            id: 0,
+            event_id: event_id.clone(),
+            session_id: req.claude.session_id.clone(),
+            event_type: req.event_type.clone(),
+            tool_name: req.claude.tool_name.clone(),
+            cwd: req.claude.cwd.clone(),
+            created_at: chrono::Utc::now(),
+            metadata: req
+                .claude
+                .tool_input
+                .as_ref()
+                .and_then(|v| serde_json::to_string(v).ok()),
+        };
+        history.record(&record);
+    }
 
     // Blocking branch: flip the session to WaitingApproval, stash a
     // pending entry, and broadcast it so the UI can render the prompt.
@@ -202,6 +225,22 @@ async fn post_jump(
     // through the Tauri command which reads SettingsStore; external
     // curl jumps are a debug convenience, so defaults are acceptable.
     Ok(Json(jump_to_session(&session, &Settings::default())))
+}
+
+/// Read the last N events for a session from the SQLite history. If
+/// the DB failed to open at startup, returns an empty array (not 500)
+/// — history is a convenience, its absence shouldn't look like an error.
+async fn list_session_history(
+    Path(claude_session_id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<EventRecord>>, (StatusCode, String)> {
+    let Some(history) = state.history.as_ref() else {
+        return Ok(Json(Vec::new()));
+    };
+    history
+        .list_for_session(&claude_session_id, 200)
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 type Response = axum::response::Response;
