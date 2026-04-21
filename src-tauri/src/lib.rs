@@ -13,8 +13,10 @@ mod settings;
 use tauri::{command, AppHandle, Emitter, Manager, State};
 use tracing::{error, info, warn};
 
+use std::time::Duration;
+
 use crate::decisions::{PendingDecisions, PendingEvent};
-use crate::events::EventBus;
+use crate::events::{BusMessage, EventBus};
 use crate::history::{EventRecord, History};
 use crate::session::{Session, SessionManager};
 use crate::settings::{Settings, SettingsStore};
@@ -153,6 +155,27 @@ pub fn run() {
                             warn!(dropped = n, "ipc subscriber lagged");
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+
+            // Periodic pruning of sessions whose terminal window has
+            // been closed abruptly (Claude process killed without
+            // firing its Stop/SessionEnd hooks). Every 20s is a good
+            // balance between responsiveness and IsWindow churn.
+            let sessions_for_prune = sessions.clone();
+            let events_for_prune = events.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(20));
+                // Skip the immediate tick so we don't prune during startup
+                // before the first event has landed.
+                ticker.tick().await;
+                loop {
+                    ticker.tick().await;
+                    let dead = sessions_for_prune.prune_dead_windows();
+                    for claude_session_id in dead {
+                        tracing::info!(session_id = %claude_session_id, "pruned session with dead terminal window");
+                        events_for_prune.publish(BusMessage::SessionRemoved { claude_session_id });
                     }
                 }
             });

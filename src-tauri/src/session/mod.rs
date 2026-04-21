@@ -160,6 +160,43 @@ impl SessionManager {
         s.last_activity = Utc::now();
         Some(s.clone())
     }
+
+    pub fn remove(&self, claude_session_id: &str) -> Option<Session> {
+        self.inner
+            .write()
+            .expect("session lock poisoned")
+            .remove(claude_session_id)
+    }
+
+    /// Drop sessions whose captured HWND no longer points to a live
+    /// window. Returns the ids we actually removed so the caller can
+    /// publish SessionRemoved events.
+    pub fn prune_dead_windows(&self) -> Vec<String> {
+        // Snapshot under a read lock first so we don't hold the write
+        // lock across the Win32 call.
+        let candidates: Vec<(String, i64)> = {
+            let map = self.inner.read().expect("session lock poisoned");
+            map.iter()
+                .filter_map(|(id, s)| s.current_hwnd.map(|h| (id.clone(), h)))
+                .collect()
+        };
+
+        let dead: Vec<String> = candidates
+            .into_iter()
+            .filter(|(_, h)| !crate::platform::hwnd::is_live_window(*h))
+            .map(|(id, _)| id)
+            .collect();
+
+        if dead.is_empty() {
+            return dead;
+        }
+
+        let mut map = self.inner.write().expect("session lock poisoned");
+        for id in &dead {
+            map.remove(id);
+        }
+        dead
+    }
 }
 
 /// Map a Claude Code hook event name to the session status it implies.

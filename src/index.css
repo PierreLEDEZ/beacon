@@ -150,6 +150,9 @@ body,
   background: #3f3f46;
 }
 
+/* Duplicate of status-done on purpose — the collapsed global dot has a
+   `status-done` class too and must match the per-session grey. */
+
 @keyframes pulse {
   0%,
   100% {

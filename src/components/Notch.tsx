@@ -35,6 +35,7 @@ type GlobalStatus =
   | "working"
   | "waiting_approval"
   | "error"
+  | "done"
   | "empty";
 
 function globalStatus(
@@ -45,7 +46,14 @@ function globalStatus(
   if (sessions.length === 0) return "empty";
   if (sessions.some((s) => s.status === "error")) return "error";
   if (sessions.some((s) => s.status === "working")) return "working";
+  // "All sessions settled" bucket — not the same as having a live
+  // session sitting idle, so flag it as done (grey) instead of idle.
+  if (sessions.every((s) => s.status === "done")) return "done";
   return "idle";
+}
+
+function activeCount(sessions: Session[]): number {
+  return sessions.filter((s) => s.status !== "done").length;
 }
 
 export function Notch() {
@@ -243,7 +251,7 @@ export function Notch() {
           <div className="notch-collapsed-row">
             <div className={`status-dot status-${gStatus}`} />
             <span className="notch-count">
-              {hasPending ? pendingList.length : sessionList.length}
+              {hasPending ? pendingList.length : activeCount(sessionList)}
             </span>
             <span className="notch-label">
               {hasPending ? "Pending" : "Beacon"}

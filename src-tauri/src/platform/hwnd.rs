@@ -24,7 +24,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 #[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
-    AllowSetForegroundWindow, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+    AllowSetForegroundWindow, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindow,
     SetForegroundWindow, ShowWindow, ASFW_ANY, SW_RESTORE,
 };
 
@@ -145,6 +145,25 @@ pub fn process_name_of_hwnd(raw_hwnd: i64) -> Option<String> {
 #[cfg(not(windows))]
 pub fn process_name_of_hwnd(_raw_hwnd: i64) -> Option<String> {
     None
+}
+
+/// True if `raw_hwnd` still refers to a real, existing window. Used by
+/// the periodic health check to detect terminals that were closed
+/// abruptly (Alt-F4, taskbar-close) — Claude then never got a chance
+/// to fire SessionEnd so we infer death from the missing window.
+#[cfg(windows)]
+pub fn is_live_window(raw_hwnd: i64) -> bool {
+    unsafe {
+        let hwnd = HWND(raw_hwnd as *mut core::ffi::c_void);
+        IsWindow(Some(hwnd)).as_bool()
+    }
+}
+
+#[cfg(not(windows))]
+pub fn is_live_window(_raw_hwnd: i64) -> bool {
+    // Without an HWND concept we can't detect closure here — callers
+    // should treat this as "still alive" so we don't drop sessions.
+    true
 }
 
 /// Bring `hwnd` to the foreground. Does the AttachThreadInput +
