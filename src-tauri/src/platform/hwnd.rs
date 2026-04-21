@@ -28,18 +28,64 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetForegroundWindow, ShowWindow, ASFW_ANY, SW_RESTORE,
 };
 
+/// Exe basenames (no extension, case-insensitive) that are definitely
+/// NOT terminal emulators. Used to reject the foreground window if the
+/// user happened to have Claude Desktop / the Start menu / etc. up when
+/// the session's first event fired.
+const NON_TERMINAL_EXES: &[&str] = &[
+    "claude",                   // Claude Desktop (can be always-on-top, easy to steal focus)
+    "beacon",                   // ourselves (WS_EX_NOACTIVATE means this shouldn't happen,
+                                // but belt + braces)
+    "explorer",                 // Windows shell
+    "searchapp",                // Win11 search popup
+    "shellexperiencehost",
+    "startmenuexperiencehost",
+    "textinputhost",
+    "lockapp",
+    "dwm",                      // compositor
+    "applicationframehost",     // host for UWP windows that have nothing else on top
+    "chrome",
+    "msedge",
+    "firefox",
+    "brave",
+    "discord",
+    "slack",
+    "spotify",
+    "notepad",
+    "notepad++",
+    "word",
+    "excel",
+    "outlook",
+];
+
+fn is_non_terminal(exe: &str) -> bool {
+    NON_TERMINAL_EXES
+        .iter()
+        .any(|b| b.eq_ignore_ascii_case(exe))
+}
+
 /// Grab whatever window is foreground right now. Returns None if the
-/// Win32 API reported no foreground window (rare — only happens during
-/// logon / lock screen). Encoded as i64 so the value crosses serde to
-/// the frontend / stores in Session without bringing windows types in.
+/// Win32 API reported no foreground window or the owning process is on
+/// our "definitely not a terminal" blacklist — in that case the caller
+/// should try again at the next event (UserPromptSubmit, PostToolUse,
+/// etc.) and will usually land on the terminal once the user hits Enter.
+///
+/// Encoded as i64 so the value crosses serde to the frontend / stores
+/// in Session without bringing windows types into public API.
 #[cfg(windows)]
 pub fn capture_foreground_hwnd() -> Option<i64> {
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.0.is_null() {
-        None
-    } else {
-        Some(hwnd.0 as i64)
+        return None;
     }
+    let raw = hwnd.0 as i64;
+    if let Some(exe) = process_name_of_hwnd(raw) {
+        if is_non_terminal(&exe) {
+            tracing::debug!(exe = %exe, "skipping non-terminal foreground window");
+            return None;
+        }
+    }
+    Some(raw)
 }
 
 #[cfg(not(windows))]
