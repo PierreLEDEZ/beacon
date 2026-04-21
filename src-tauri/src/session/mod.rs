@@ -71,9 +71,32 @@ impl SessionManager {
         let now = Utc::now();
         let next_status = status_from_event(&req.event_type);
         // Capture BEFORE taking the write lock — GetForegroundWindow
-        // should not depend on our own lock state.
-        let captured_hwnd = crate::platform::hwnd::capture_foreground_hwnd();
-        let captured_exe = captured_hwnd.and_then(crate::platform::hwnd::process_name_of_hwnd);
+        // should not depend on our own lock state. The host_terminal
+        // kind from the hook is the context we use to decide whether
+        // the captured HWND looks plausible (e.g. for claude-desktop
+        // events we accept claude.exe, for others we reject it).
+        let host_kind = req.execution_context.host_terminal.kind.as_str();
+        let raw_hwnd = crate::platform::hwnd::capture_foreground_hwnd();
+        let (captured_hwnd, captured_exe) = match raw_hwnd {
+            Some(h) => {
+                let exe = crate::platform::hwnd::process_name_of_hwnd(h);
+                let plausible = exe
+                    .as_deref()
+                    .map(|e| crate::platform::hwnd::is_plausible_host(e, host_kind))
+                    .unwrap_or(true);
+                if plausible {
+                    (Some(h), exe)
+                } else {
+                    tracing::debug!(
+                        exe = exe.as_deref().unwrap_or(""),
+                        host = host_kind,
+                        "rejecting implausible host window; will retry at next event"
+                    );
+                    (None, None)
+                }
+            }
+            None => (None, None),
+        };
         let mut map = self.inner.write().expect("session lock poisoned");
 
         let entry = map

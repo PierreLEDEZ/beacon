@@ -58,34 +58,39 @@ const NON_TERMINAL_EXES: &[&str] = &[
     "outlook",
 ];
 
-fn is_non_terminal(exe: &str) -> bool {
-    NON_TERMINAL_EXES
+/// Context-aware filter: given the hook-reported `host_terminal_kind`
+/// and the exe we resolved from the HWND, decide whether the HWND is
+/// a plausible host for this session.
+///
+/// Special-cases `claude-desktop` events (emitted by the Windows-native
+/// `beacon.exe hook`): there the claude.exe window IS the right jump
+/// target, so we must not blacklist it.
+pub fn is_plausible_host(exe: &str, host_terminal_kind: &str) -> bool {
+    if host_terminal_kind == "claude-desktop" {
+        // Claude Desktop's own HWND is the expected target. Don't filter.
+        return true;
+    }
+    !NON_TERMINAL_EXES
         .iter()
         .any(|b| b.eq_ignore_ascii_case(exe))
 }
 
 /// Grab whatever window is foreground right now. Returns None if the
-/// Win32 API reported no foreground window or the owning process is on
-/// our "definitely not a terminal" blacklist — in that case the caller
-/// should try again at the next event (UserPromptSubmit, PostToolUse,
-/// etc.) and will usually land on the terminal once the user hits Enter.
+/// Win32 API reported no foreground window. Encoded as i64 so the
+/// value crosses serde to the frontend / stores in Session without
+/// bringing windows types into public API.
 ///
-/// Encoded as i64 so the value crosses serde to the frontend / stores
-/// in Session without bringing windows types into public API.
+/// Caller is responsible for deciding whether the returned HWND is
+/// plausible (see `is_plausible_host`) — for WSL sessions we typically
+/// reject claude.exe, for Claude Desktop sessions we accept it.
 #[cfg(windows)]
 pub fn capture_foreground_hwnd() -> Option<i64> {
     let hwnd = unsafe { GetForegroundWindow() };
     if hwnd.0.is_null() {
-        return None;
+        None
+    } else {
+        Some(hwnd.0 as i64)
     }
-    let raw = hwnd.0 as i64;
-    if let Some(exe) = process_name_of_hwnd(raw) {
-        if is_non_terminal(&exe) {
-            tracing::debug!(exe = %exe, "skipping non-terminal foreground window");
-            return None;
-        }
-    }
-    Some(raw)
 }
 
 #[cfg(not(windows))]
