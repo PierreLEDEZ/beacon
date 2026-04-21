@@ -1,6 +1,7 @@
 mod decisions;
 mod events;
 mod history;
+pub mod hook;
 pub mod install;
 mod jump;
 mod logging;
